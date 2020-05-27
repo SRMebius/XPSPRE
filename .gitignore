@@ -1,0 +1,12 @@
+#files
+.project
+.pydevproject
+main.spec
+XPSPRE.zip
+calibrate.ui
+
+#folders
+.settings/
+__pycache__/
+Data for test/
+

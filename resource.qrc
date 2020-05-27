@@ -1,0 +1,37 @@
+<RCC>
+  <qresource prefix="Main">
+    <file>Imag/logo.png</file>
+    <file>Imag/runicon.png</file>
+    <file>Imag/eyeicon.png</file>
+  </qresource>
+  <qresource prefix="Comparation">
+    <file>Imag/undo.png</file>
+  </qresource>
+  <qresource prefix="Helper">
+    <file>Imag/nor_0-1.png</file>
+    <file>Imag/nor_dividedbymax.png</file>
+    <file>Imag/nor_zscores.png</file>
+    <file>Imag/comp_normal3.png</file>
+    <file>Imag/comp_figure3.png</file>
+    <file>Imag/comp_normal1.png</file>
+    <file>Imag/comp_normal2.png</file>
+    <file>Imag/comp_figure1.png</file>
+    <file>Imag/comp_plot.png</file>
+    <file>Imag/comp_filepath.png</file>
+    <file>Imag/toolbar_save_formate.png</file>
+    <file>Imag/toolbar_edit.png</file>
+    <file>Imag/toolbar_home.png</file>
+    <file>Imag/toolbar_pan.png</file>
+    <file>Imag/toolbar_save.png</file>
+    <file>Imag/toolbar_zoom.png</file>
+    <file>Imag/comp_figure2.png</file>
+    <file>Imag/navigation toolbar.png</file>
+    <file>Imag/atomic ratio.png</file>
+    <file>Imag/im_S-a_csv_data.png</file>
+    <file>Imag/calibration.png</file>
+    <file>Imag/im_N-a_csv_eg.png</file>
+    <file>Imag/im_N-a_csv.png</file>
+    <file>Imag/im_N-a_txt.png</file>
+    <file>Imag/im_S-a_csv.png</file>
+  </qresource>
+</RCC>
