@@ -1,19 +1,27 @@
-#!/ur/bi  n/env python
+#!/usr/bin/env python
 #coding:utf-8
-'''Created on 2020/4/23/9:31:02 PM
-@ author ZKY'''
+# =============================================================================
+# Created on 2020/4/23/9:31:02 PM
+# @ author ZKY
+# =============================================================================
 
-import resource
-import pandas as pd
-from normalization import *
+__version__ = '3.0'
+
 from functools import partial
+
+import pandas as pd
+import numpy as np
 from qtpy.QtCore import Qt
-from PySide2.QtWidgets import QWidget, QVBoxLayout, QApplication, QMessageBox, QFileDialog, QLabel, QSizePolicy, QPushButton
-from PySide2.QtUiTools import QUiLoader
 from PySide2.QtGui import QIcon
+from PySide2.QtUiTools import QUiLoader
+from PySide2.QtWidgets import QWidget, QVBoxLayout, QApplication, QMessageBox, QFileDialog, QLabel, QSizePolicy, QPushButton
 from matplotlib import rc, cbook
 from matplotlib.figure import Figure
 from matplotlib.backends.backend_qt5agg import (NavigationToolbar2QT, FigureCanvasQTAgg as FigureCanvas)
+
+import resource
+from normalization import Normalization
+
 
 def RC_Initial():
     rc('font', family=['Times New Roman'], size=11)
@@ -41,9 +49,6 @@ class NavigationToolbar(NavigationToolbar2QT):
         ('Save', 'Save the figure', 'filesave', 'save_figure'),
         (None, None, None, None),
         )
-    
-    def __init__(self, canvas, parent):
-        NavigationToolbar2QT.__init__(self, canvas, parent, coordinates = True)
     
     def _init_toolbar(self):
         self.basedir = str(cbook._get_data_path('images'))
@@ -74,6 +79,9 @@ class NavigationToolbar(NavigationToolbar2QT):
             self.locLabel.setSizePolicy(QSizePolicy(QSizePolicy.Expanding, QSizePolicy.Ignored))
             labelAction = self.addWidget(self.locLabel)
             labelAction.setVisible(True) 
+    
+    def _update_buttons_checked(self):
+        pass
 
 
 class MplWidget(QWidget):
@@ -83,7 +91,7 @@ class MplWidget(QWidget):
 
         self.canvas = FigureCanvas(Figure())
         self.toolbar = NavigationToolbar(self.canvas, self)
-
+        
         vertical_layout = QVBoxLayout()
         vertical_layout.setSpacing(0)
         vertical_layout.addWidget(self.canvas)
@@ -98,7 +106,7 @@ class Manipulation():
         self.initial_data()
     
     def initial_data(self):
-        self.Elements_Contents = {}
+        self.Elements_Contents = None
         self.Full_Scan_BE = None
         self.Full_Scan_Intensity = None
         self.Fine_Scan_Elements = None 
@@ -110,9 +118,7 @@ class Manipulation():
         file = pd.read_table(address)
         elements = file.values[-2:][0][0].strip().split()
         contents = file.values[-2:][1][0].strip().split()
-        
-        for element in elements:
-            self.Elements_Contents[element] = float(contents[elements.index(element)])
+        self.Elements_Contents = dict(zip(elements, list(map(float, contents))))
 
     def read_full_scan(self, address):        
         file = pd.read_csv(address,
@@ -128,7 +134,10 @@ class Manipulation():
         
         self.Fine_Scan_Elements = file.values[1].tolist()[::2]
         
-        name = ''.join([f'{element}_BE,{element}_Intensity,' for element in self.Fine_Scan_Elements])[:-1].split(',')
+        name = [f'{element}_{suffix}' \
+                for element in self.Fine_Scan_Elements \
+                for suffix in ['BE', 'Intensity']]
+        
         file = pd.read_csv(address,
                            names = name,
                            skiprows = 4)
@@ -163,15 +172,13 @@ class Manipulation():
             self.Elements_Contents_Update()
             self.delta_BE = 0.0
             return True
-        
-        else:return False
+        else:
+            return False
     
     def calculate_atomic_ratio(self, element_1, element_2):
-        try:
-            content_1 = self.Elements_Contents[element_1]
-            content_2 = self.Elements_Contents[element_2]
-            return f'{(content_1/content_2):.2f}'
-        except:return 'NAN'
+        content_1 = self.Elements_Contents[element_1]
+        content_2 = self.Elements_Contents[element_2]
+        return f'{(content_1/content_2):.2f}'
     
     def save_txt(self, address):
         for element in self.Fine_Scan_Elements:
@@ -190,10 +197,14 @@ class CalculatorWindow():
     def setButtonConnect(self):
         btn_list = self.ui_calculator.findChildren(QPushButton)        
         for btn in btn_list:
-            if btn.text() == 'C':btn.clicked.connect(self.clear)
-            elif btn.text() == '<':btn.clicked.connect(self.backspace)
-            elif btn.text() == '=':btn.clicked.connect(self.calculate)
-            else:btn.clicked.connect(partial(self.express, btn.text()))
+            if btn.text() == 'C':
+                btn.clicked.connect(self.clear)
+            elif btn.text() == '<':
+                btn.clicked.connect(self.backspace)
+            elif btn.text() == '=':
+                btn.clicked.connect(self.calculate)
+            else:
+                btn.clicked.connect(partial(self.express, btn.text()))
     
     def clear(self):
         self.ui_calculator.lineEdit.clear()
@@ -204,20 +215,25 @@ class CalculatorWindow():
         self.ui_calculator.lineEdit.setText(self.expression)
     
     def calculate(self):
-        value = eval(self.expression)
-        self.ui_calculator.lineEdit.setText(f'{value}')
-        self.ui_calculator.textBrowser.append(f'{self.expression} = {value}\n')
-        self.expression = ''
+        try:
+            value = eval(self.expression)
+        except (SyntaxError, AttributeError):
+            value = None
+        else:
+            self.ui_calculator.lineEdit.setText(f'{value}')
+            self.ui_calculator.textBrowser.append(f'{self.expression} = {value}\n')
+            self.expression = ''
     
     def express(self, s):
         self.expression = self.ui_calculator.lineEdit.text() + s
         self.ui_calculator.lineEdit.setText(self.expression)
 
 
-class ComparationWindow(Normalization):
+class ComparationWindow():
     
     def __init__(self):
-        self.sample_names = ['']
+        self.Nor = Normalization()
+        self.sample_names = []
         self.all_data = pd.DataFrame()
         
         loader = QUiLoader()
@@ -238,7 +254,7 @@ class ComparationWindow(Normalization):
         self.ui_comparation.radioButton_1.clicked.connect(partial(self.nor, 1))
         self.ui_comparation.radioButton_2.clicked.connect(partial(self.nor, 2))
         self.ui_comparation.radioButton_3.clicked.connect(partial(self.nor, 3))
-        self.ui_comparation.radioButton_4.clicked.connect(self.nor_method4)
+        self.ui_comparation.radioButton_4.clicked.connect(partial(self.nor, 4))
     
     def openFile_dialog(self):
         self.file_path, _ = QFileDialog.getOpenFileName(self.ui_comparation,
@@ -248,27 +264,32 @@ class ComparationWindow(Normalization):
     
     def nor_plot(self, df):
         self.ui_comparation.widget.canvas.axes.clear()
-        for n in self.sample_names[1:]:
-            self.plot(df[f'{n}_BE'].values, df[f'{n}_Intensity'].values, n)
+        for sample_name in self.sample_names:
+            self.plot(df[f'{sample_name}_BE'].values, df[f'{sample_name}_Intensity'].values, sample_name)
         
     def nor(self, m):
-        df = self.all_data.copy()
-        for n in self.sample_names[1:]:
-            if m == 1:df[f'{n}_Intensity'] = self.method_1(df[f'{n}_Intensity'])
-            elif m == 2:df[f'{n}_Intensity'] = self.method_2(df[f'{n}_Intensity'])
-            elif m == 3:df[f'{n}_Intensity'] = self.method_3(df[f'{n}_Intensity'])
-        self.nor_plot(df)
-    
-    def nor_method4(self):
         df = self.all_data.copy()
         try:
             x1 = float(self.ui_comparation.lineEdit_3.text())
             x2 = float(self.ui_comparation.lineEdit_4.text())
-            for n in self.sample_names[1:]:
-                df[f'{n}_Intensity'] = self.method_4(df[[f'{n}_BE', f'{n}_Intensity']], x1, x2)
+        except ValueError:
+            pass
+        else:
+            if m == 4:
+                for sample_name in self.sample_names:
+                    df[f'{sample_name}_Intensity'] = self.Nor.method_4(df[[f'{sample_name}_BE', f'{sample_name}_Intensity']], x1, x2)
+        finally:
+            if m == 1:
+                for sample_name in self.sample_names:
+                    df[f'{sample_name}_Intensity'] = self.Nor.method_1(df[f'{sample_name}_Intensity'])
+            elif m == 2:
+                for sample_name in self.sample_names:
+                    df[f'{sample_name}_Intensity'] = self.Nor.method_2(df[f'{sample_name}_Intensity'])
+            elif m ==3:
+                for sample_name in self.sample_names:
+                    df[f'{sample_name}_Intensity'] = self.Nor.method_3(df[f'{sample_name}_Intensity'])
             self.nor_plot(df)
-        except:pass
-    
+        
     def undo_nor(self):
         self.nor_plot(self.all_data)
     
@@ -282,45 +303,44 @@ class ComparationWindow(Normalization):
     def add_plot(self):
         sample_name = self.ui_comparation.lineEdit_2.text()
         
-        if sample_name not in self.sample_names:
+        if sample_name not in [' '*i for i in range(10)] and sample_name not in self.sample_names:
             try:
-                if self.file_path[-4:] == '.csv':
+                if self.file_path.endswith('.csv'):
                     data = pd.read_csv(self.file_path,
                                        names = [f'{sample_name}_BE', f'{sample_name}_Intensity'],
                                        skiprows = 4)
-                elif self.file_path[-4:] == '.txt':
+                elif self.file_path.endswith('.txt'):
                     data = pd.read_csv(self.file_path,
                                         sep = ' ',
                                         names = [f'{sample_name}_BE', f'{sample_name}_Intensity'])                
-                
+            except Exception:
+                pass
+            else:
                 self.plot(data[f'{sample_name}_BE'].values,
                           data[f'{sample_name}_Intensity'].values,
                           sample_name)
-
+    
                 self.ui_comparation.lineEdit_2.setText('')
                 self.sample_names.append(sample_name)
                 self.all_data = pd.concat([self.all_data, data], axis = 1)
-            except:pass
     
     def remove_plot(self):
         sample_name = self.ui_comparation.lineEdit_2.text()
         
-        if sample_name in self.sample_names[1:]:
-            try:
-                self.ui_comparation.widget.canvas.axes.lines[self.sample_names.index(sample_name)-1].remove()
-                self.ui_comparation.widget.canvas.axes.legend()
-                self.ui_comparation.widget.canvas.draw()
-            
-                self.ui_comparation.lineEdit_2.setText('')
-                self.sample_names.remove(sample_name)
-                self.all_data = self.all_data.drop([f'{sample_name}_BE', f'{sample_name}_Intensity'], axis = 1)
-            except:pass
+        if sample_name in self.sample_names:
+            self.ui_comparation.widget.canvas.axes.lines[self.sample_names.index(sample_name)].remove()
+            self.ui_comparation.widget.canvas.axes.legend()
+            self.ui_comparation.widget.canvas.draw()
+        
+            self.ui_comparation.lineEdit_2.setText('')
+            self.sample_names.remove(sample_name)
+            self.all_data = self.all_data.drop([f'{sample_name}_BE', f'{sample_name}_Intensity'], axis = 1)
         
     def clear_plot(self):
         self.ui_comparation.widget.canvas.axes.clear()
         self.ui_comparation.widget.canvas.draw()
         
-        self.sample_names = ['']
+        self.sample_names = []
         self.all_data = pd.DataFrame()
         
 
@@ -339,19 +359,12 @@ class HelperWindow():
         self.ui_helper.show()
     
     def display(self):
+        item_list = ['Preface', 'Import', 'Element Spectrum', 'XPS File', \
+                     'Calibration', 'Atomic Ratio', 'ViewALL', 'Calculator', \
+                     'Comparation', 'Retrieve', 'Navigation Toolbar']
         item = self.ui_helper.treeWidget.currentItem().text(0)
-        
-        if item == 'Preface':self.ui_helper.stackedWidget.setCurrentWidget(self.ui_helper.page0)
-        elif item == 'Import':self.ui_helper.stackedWidget.setCurrentWidget(self.ui_helper.page1)
-        elif item == 'Element Spectrum':self.ui_helper.stackedWidget.setCurrentWidget(self.ui_helper.page2)
-        elif item == 'XPS File':self.ui_helper.stackedWidget.setCurrentWidget(self.ui_helper.page3)
-        elif item == 'Calibration':self.ui_helper.stackedWidget.setCurrentWidget(self.ui_helper.page4)
-        elif item == 'Atomic Ratio':self.ui_helper.stackedWidget.setCurrentWidget(self.ui_helper.page5)
-        elif item == 'ViewALL':self.ui_helper.stackedWidget.setCurrentWidget(self.ui_helper.page6)
-        elif item == 'Calculator':self.ui_helper.stackedWidget.setCurrentWidget(self.ui_helper.page7)
-        elif item == 'Comparation':self.ui_helper.stackedWidget.setCurrentWidget(self.ui_helper.page8)
-        elif item == 'Retrieve':self.ui_helper.stackedWidget.setCurrentWidget(self.ui_helper.page9)
-        elif item == 'Navigation Toolbar':self.ui_helper.stackedWidget.setCurrentWidget(self.ui_helper.page10)
+        if item != 'Export':
+            self.ui_helper.stackedWidget.setCurrentIndex(item_list.index(item))
         
 
 class AboutWindow():
@@ -368,12 +381,12 @@ class ViewALLWindow():
         loader = QUiLoader()
         loader.registerCustomWidget(MplWidget)
         self.ui_viewall = loader.load('UIs/viewall.ui')
+        self.ui_viewall.show()
 
-
-class MainWindow(Manipulation):
+class MainWindow():
     
     def __init__(self):
-        Manipulation.__init__(self)
+        self.Manip = Manipulation()
         
         loader = QUiLoader()
         loader.registerCustomWidget(MplWidget)
@@ -419,16 +432,20 @@ class MainWindow(Manipulation):
         self.ui.lineEdit_3.clear()
         self.ui.MplWidget.canvas.axes.clear()
         self.ui.MplWidget.canvas.draw()
-        try:self.vie.ui_viewall.close()
-        except:pass
+        try:
+            self.vie.ui_viewall.close()
+        except AttributeError:
+            pass
         
     def lineedit_3(self):
         element_1 = self.ui.comboBox_1.currentText()
         element_2 = self.ui.comboBox_2.currentText()
-        
-        atomic_ratio = self.calculate_atomic_ratio(element_1, element_2)
-
-        self.ui.lineEdit_3.setText(atomic_ratio)
+        try:
+            atomic_ratio = self.Manip.calculate_atomic_ratio(element_1, element_2)
+        except (KeyError, ZeroDivisionError):
+            atomic_ratio = 'NAN'
+        finally:
+            self.ui.lineEdit_3.setText(atomic_ratio)
         
     def listwidget(self, Elements_Contents):
         for element, content in Elements_Contents.items():
@@ -443,38 +460,39 @@ class MainWindow(Manipulation):
         self.ui.comboBox_2.addItems(elements)
     
     def import_files(self):
+        self.Manip.initial_data()
+        
         file_names, _ = QFileDialog.getOpenFileNames(self.ui,
                                                     'Select the three files to open',
                                                     filter='Data files (*.txt *.csv)')
         if len(file_names) != 0:
             self.file_address = file_names[0][:-7]
             
-            if self.check_files(file_names, self.file_address) == True:
+            if self.Manip.check_files(file_names, self.file_address) == True:
                 self.clear_ui_contents()
                 QMessageBox.information(self.ui,
                                         'INFO',
                                         'Files imported.')
-                self.listwidget(self.Elements_Contents)
-                self.lineedit_1(self.Elements_Contents.keys())
-                self.comobox(self.Elements_Contents.keys())
+                self.listwidget(self.Manip.Elements_Contents)
+                self.lineedit_1(self.Manip.Elements_Contents.keys())
+                self.comobox(self.Manip.Elements_Contents.keys())
             else:
                 QMessageBox.warning(self.ui,
                                     'ERROR',
                                     'Please select the three files correctly !\nElement Content (.txt)\nFine Scan (.csv)\nFull Scan (.csv)')
 
     def export_spectra_files(self):
-        if self.delta_BE == None:pass
-        elif self.delta_BE == 0.0:
+        if self.Manip.delta_BE == 0.0:
             if QMessageBox.question(self.ui,
                                     'Warning',
                                     'You have not calibrate the data yet\nAre you sure to export the .txt files?',
                                     QMessageBox.Yes, QMessageBox.No) == QMessageBox.Yes:
-                self.save_txt(self.file_address)
+                self.Manip.save_txt(self.file_address)
                 QMessageBox.information(self.ui,
                                     'INFO',
                                     'Spectra files have been exported in .txt format for each element.')
-        else:
-            self.save_txt(self.file_address)
+        elif self.Manip.delta_BE != None:
+            self.Manip.save_txt(self.file_address)
             QMessageBox.information(self.ui,
                                     'INFO',
                                     'Spectra files have been exported in .txt format for each element.')
@@ -485,23 +503,27 @@ class MainWindow(Manipulation):
                                 'This function is under developing')
         
     def run_calibrate(self):
-#         利用self.Fine_Scan_Elements判断是否已经导入数据，
-#         若未导入则run_calibrate调用无效，self.delta_BE = None
-#         若已导入但run_calibrate调用失败，self.delta_BE = 0.0（由导入时调用的check_files赋值）
-#         若已导入且run_calibrate调用成功，self.delta_BE = 结合能差值
-        if self.Fine_Scan_Elements != None:
+#     '''
+#     利用self.Fine_Scan_Elements判断是否已经导入数据，
+#     若未导入则run_calibrate调用无效，self.Manip.delta_BE = None
+#     若已导入但run_calibrate调用失败，self.Manip.delta_BE = 0.0（由导入时调用的check_files赋值）
+#     若已导入且run_calibrate调用成功，self.Manip.delta_BE = 结合能差值
+#     '''
+        if self.Manip.Fine_Scan_Elements != None:
             Standard_BE = self.ui.lineEdit_1.text()
             Measured_BE = self.ui.lineEdit_2.text()
     
             try:
-                self.delta_BE = float(Standard_BE) - float(Measured_BE)
-                self.calibrate_BE()
+                self.Manip.delta_BE = float(Standard_BE) - float(Measured_BE)
+            except ValueError:
+                pass
+            else:
+                self.Manip.calibrate_BE()
                 QMessageBox.information(self.ui,
                                         'INFO',
                                         'Calibration finished.')
                 self.ui.MplWidget.canvas.axes.clear()
                 self.draw()           
-            except:pass
         
     def draw(self):
         
@@ -517,8 +539,8 @@ class MainWindow(Manipulation):
             self.ui.MplWidget.canvas.draw_idle()
 
         selected_element = self.ui.listWidget.currentItem().text().split('      ')[0]
-        x = self.Fine_Scan_BE[selected_element]
-        y = self.Fine_Scan_Intensity[selected_element]
+        x = self.Manip.Fine_Scan_BE[selected_element]
+        y = self.Manip.Fine_Scan_Intensity[selected_element]
         
         self.ui.MplWidget.canvas.axes.clear()
         self.ui.MplWidget.canvas.axes.plot(x, y, label=selected_element)
@@ -535,47 +557,62 @@ class MainWindow(Manipulation):
         self.ui.MplWidget.canvas.draw()
         
     def viewall(self):
-        n = len(self.Fine_Scan_Elements)
-        if n in [1, 2, 3]:style = 231
-        elif n in [4, 5, 6]:style = 331
-        elif n in [7, 8, 9]:style = 431
-        else:style = 111
-        
-        try:self.vie.ui_viewall.close()
-        except:pass
-        self.vie = ViewALLWindow()
+        try:
+            self.vie.ui_viewall.close()
+        except AttributeError:
+            pass
+        finally:
+            self.vie = ViewALLWindow()
 
-        for i in range(n):
-            x = self.Fine_Scan_BE[self.Fine_Scan_Elements[i]]
-            y = self.Fine_Scan_Intensity[self.Fine_Scan_Elements[i]]
-            ax = self.vie.ui_viewall.widget.canvas.figure.add_subplot(style+i)
-            ax.plot(x, y, label=self.Fine_Scan_Elements[i], c='black')
+        styles = {1:231, 2:231, 3:231, 4:331, 5:331, 6:331, 7:431, 8:431, 9:431}
+        try:
+            n = len(self.Manip.Fine_Scan_Elements)
+        except TypeError:
+            pass
+        else:
+            if n <= 9:
+                style = styles[n]
+            else:
+                style = 111
+            for i in range(n):
+                x = self.Manip.Fine_Scan_BE[self.Manip.Fine_Scan_Elements[i]]
+                y = self.Manip.Fine_Scan_Intensity[self.Manip.Fine_Scan_Elements[i]]
+                ax = self.vie.ui_viewall.widget.canvas.figure.add_subplot(style+i)
+                ax.plot(x, y, label=self.Manip.Fine_Scan_Elements[i], c='black')
+                ax.invert_xaxis()
+                ax.legend()
+     
+            ax = self.vie.ui_viewall.widget.canvas.figure.add_subplot((style//100) * 100 + 10 + (style//100))
+            ax.plot(self.Manip.Full_Scan_BE, self.Manip.Full_Scan_Intensity, label='Full Scan', c='black')
             ax.invert_xaxis()
+            ax.set_xlabel('B.E. (eV)')
             ax.legend()
- 
-        ax = self.vie.ui_viewall.widget.canvas.figure.add_subplot((style//100) * 100 + 10 + (style//100))
-        ax.plot(self.Full_Scan_BE, self.Full_Scan_Intensity, label='Full Scan', c='black')
-        ax.invert_xaxis()
-        ax.set_xlabel('B.E. (eV)')
-        ax.legend()
-        
-        self.vie.ui_viewall.widget.canvas.draw()
-        self.vie.ui_viewall.show()
+            
+            self.vie.ui_viewall.widget.canvas.draw()
     
     def calculator(self):
-        try:self.cal.ui_calculator.close()
-        except:pass
-        self.cal = CalculatorWindow()
+        try:
+            self.cal.ui_calculator.close()
+        except AttributeError:
+            pass
+        finally:
+            self.cal = CalculatorWindow()
     
     def comparation(self):
-        try:self.com.ui_comparation.close()
-        except:pass
-        self.com = ComparationWindow()
+        try:
+            self.com.ui_comparation.close()
+        except AttributeError:
+            pass
+        finally:
+            self.com = ComparationWindow()
     
     def retrieve(self):
-        try:self.ret.ui_retrieve.close()
-        except:pass
-        self.ret = RetrieveWindow()
+        try:
+            self.ret.ui_retrieve.close()
+        except AttributeError:
+            pass
+        finally:
+            self.ret = RetrieveWindow()
 
     def helper(self):
         self.hel = HelperWindow()
