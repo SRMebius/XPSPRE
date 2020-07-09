@@ -1,13 +1,14 @@
 #!/usr/bin/env python
 #coding:utf-8
 # =============================================================================
-# Created on 2020/4/23/9:31:02 PM
+# First Created on 2020/4/23/9:31:02 PM
 # @ author ZKY
 # =============================================================================
 
-__version__ = '3.0'
+__version__ = '3.1'
 
 from functools import partial
+from struct import pack
 
 import pandas as pd
 import numpy as np
@@ -185,8 +186,33 @@ class Manipulation():
             np.savetxt(f'{address}{element}.txt',
                        np.column_stack((self.Fine_Scan_BE[element], self.Fine_Scan_Intensity[element])),
                        fmt = '%f')
-
+    
+    def save_xps(self, path):
+        s = b''
+        num = len(self.Fine_Scan_Elements)
         
+        for element in self.Fine_Scan_Elements:
+            points = len(self.Fine_Scan_BE[element])
+            bin_points = pack('h', points)
+            bin_points_ = pack('h', points+1)
+            
+            bin_BE = [pack('f', BE) for BE in self.Fine_Scan_BE[element]]
+            bin_Intensity = [pack('f', Intensity) for Intensity in self.Fine_Scan_Intensity[element]]
+            bin_tail = pack('4f', np.max(self.Fine_Scan_BE[element]), np.min(self.Fine_Scan_BE[element]),
+                            np.max(self.Fine_Scan_Intensity[element]), np.min(self.Fine_Scan_Intensity[element]))
+            
+            s += b'\x44\x50' + bin_points + b'\xff\xff\x00\x00' + b'\x20'*20 + bin_points + \
+            b'\x01\x00' + bin_points_ + b'\x00'*10 + b''.join(bin_BE) + \
+            b'\x01\x00' + bin_points_ + b'\x00'*10 + b''.join(bin_Intensity) + bin_tail + b'\x00'*60 + \
+            (b'\x01\x00' + bin_points_ + b'\x00'*10 + b'\x00'*points*4)*6 + b'\x00' * 18
+        
+        s = b'\x58\x50\x53\x50\x45\x41\x4b\x20\x34\x2e\x30' + s + \
+        b'\x44\x41'*(61-num) + b'\x00'*80  + b'\x08\x00\x00\x00'
+        
+        with open(path, 'wb') as f:
+            f.write(s)
+
+
 class CalculatorWindow():
     
     def __init__(self):
@@ -251,6 +277,7 @@ class ComparationWindow():
         self.ui_comparation.pushButton_1.clicked.connect(self.add_plot)
         self.ui_comparation.pushButton_2.clicked.connect(self.remove_plot)
         self.ui_comparation.pushButton_3.clicked.connect(self.clear_plot)
+        self.ui_comparation.pushButton_4.clicked.connect(self.save_to_cp)
         self.ui_comparation.radioButton_1.clicked.connect(partial(self.nor, 1))
         self.ui_comparation.radioButton_2.clicked.connect(partial(self.nor, 2))
         self.ui_comparation.radioButton_3.clicked.connect(partial(self.nor, 3))
@@ -259,13 +286,25 @@ class ComparationWindow():
     def openFile_dialog(self):
         self.file_path, _ = QFileDialog.getOpenFileName(self.ui_comparation,
                                                         'Select the Element Spectrum to open',
-                                                        filter='Data files (*.txt *.csv)')
+                                                        filter='Data files (*.txt *.csv *.cp)')
         self.ui_comparation.lineEdit_1.setText(self.file_path)
+        
+        if self.file_path.endswith('.cp'):
+            self.all_data = pd.read_pickle(self.file_path)
+            self.sample_names = [name.split('_')[0] for name in self.all_data.columns[::2]]
+            self.recover_plot()
+    
+    def recover_plot(self):
+        self.ui_comparation.widget.canvas.axes.clear()
+        for i in range(0, len(self.sample_names)):
+            self.plot(self.all_data.iloc[:,2*i],
+                      self.all_data.iloc[:,2*i+1],
+                      self.sample_names[i])
     
     def nor_plot(self, df):
         self.ui_comparation.widget.canvas.axes.clear()
         for sample_name in self.sample_names:
-            self.plot(df[f'{sample_name}_BE'].values, df[f'{sample_name}_Intensity'].values, sample_name)
+            self.plot(df[f'{sample_name}_BE'], df[f'{sample_name}_Intensity'], sample_name)
         
     def nor(self, m):
         df = self.all_data.copy()
@@ -316,8 +355,8 @@ class ComparationWindow():
             except Exception:
                 pass
             else:
-                self.plot(data[f'{sample_name}_BE'].values,
-                          data[f'{sample_name}_Intensity'].values,
+                self.plot(data[f'{sample_name}_BE'],
+                          data[f'{sample_name}_Intensity'],
                           sample_name)
     
                 self.ui_comparation.lineEdit_2.setText('')
@@ -342,7 +381,18 @@ class ComparationWindow():
         
         self.sample_names = []
         self.all_data = pd.DataFrame()
-        
+    
+    def save_to_cp(self):
+        if len( self.all_data) != 0:
+            path, _ = QFileDialog.getSaveFileName(self.ui_comparation,
+                                                  'Save',
+                                                  filter='Data files (*.cp)')
+            if path.endswith('.cp'):
+                self.all_data.to_pickle(path)
+                QMessageBox.information(self.ui_comparation,
+                                        'INFO',
+                                        'File saved.')
+
 
 class RetrieveWindow():
 
@@ -361,7 +411,7 @@ class HelperWindow():
     def display(self):
         item_list = ['Preface', 'Import', 'Element Spectrum', 'XPS File', \
                      'Calibration', 'Atomic Ratio', 'ViewALL', 'Calculator', \
-                     'Comparation', 'Retrieve', 'Navigation Toolbar']
+                     'Comparation', 'Retrieve', 'Navigation Toolbar', 'Updata log']
         item = self.ui_helper.treeWidget.currentItem().text(0)
         if item != 'Export':
             self.ui_helper.stackedWidget.setCurrentIndex(item_list.index(item))
@@ -382,6 +432,7 @@ class ViewALLWindow():
         loader.registerCustomWidget(MplWidget)
         self.ui_viewall = loader.load('UIs/viewall.ui')
         self.ui_viewall.show()
+
 
 class MainWindow():
     
@@ -460,11 +511,9 @@ class MainWindow():
         self.ui.comboBox_2.addItems(elements)
     
     def import_files(self):
-        self.Manip.initial_data()
-        
         file_names, _ = QFileDialog.getOpenFileNames(self.ui,
                                                     'Select the three files to open',
-                                                    filter='Data files (*.txt *.csv)')
+                                                    filter='Data files (N-a.csv N-a.txt S-a.csv)')
         if len(file_names) != 0:
             self.file_address = file_names[0][:-7]
             
@@ -498,10 +547,29 @@ class MainWindow():
                                     'Spectra files have been exported in .txt format for each element.')
 
     def export_xpsfile(self):
-        QMessageBox.information(self.ui,
-                                'INFO',
-                                'This function is under developing')
-        
+        if self.Manip.delta_BE == 0.0:
+            if QMessageBox.question(self.ui,
+                                    'Warning',
+                                    'You have not calibrate the data yet\nAre you sure to export the .xps file?',
+                                    QMessageBox.Yes, QMessageBox.No) == QMessageBox.Yes:
+                path, _ = QFileDialog.getSaveFileName(self.ui,
+                                                      'Save',
+                                                      filter='Data files (*.xps)')
+                if path.endswith('.xps'):
+                    self.Manip.save_xps(path)
+                    QMessageBox.information(self.ui,
+                                        'INFO',
+                                        'Spectra files have been exported in .xps format.')
+        elif self.Manip.delta_BE != None:
+            path, _ = QFileDialog.getSaveFileName(self.ui,
+                                                  'Save',
+                                                  filter='Data files (*.xps)')
+            if path.endswith('.xps'):
+                self.Manip.save_xps(path)
+                QMessageBox.information(self.ui,
+                                        'INFO',
+                                        'Spectra files have been exported in .xps format.')
+    
     def run_calibrate(self):
 #     '''
 #     利用self.Fine_Scan_Elements判断是否已经导入数据，

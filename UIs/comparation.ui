@@ -239,13 +239,13 @@
            </property>
            <property name="minimumSize">
             <size>
-             <width>45</width>
+             <width>40</width>
              <height>0</height>
             </size>
            </property>
            <property name="maximumSize">
             <size>
-             <width>45</width>
+             <width>40</width>
              <height>16777215</height>
             </size>
            </property>
@@ -288,13 +288,13 @@
            </property>
            <property name="minimumSize">
             <size>
-             <width>45</width>
+             <width>40</width>
              <height>25</height>
             </size>
            </property>
            <property name="maximumSize">
             <size>
-             <width>45</width>
+             <width>40</width>
              <height>25</height>
             </size>
            </property>
@@ -334,13 +334,13 @@
            </property>
            <property name="minimumSize">
             <size>
-             <width>45</width>
+             <width>40</width>
              <height>25</height>
             </size>
            </property>
            <property name="maximumSize">
             <size>
-             <width>45</width>
+             <width>40</width>
              <height>25</height>
             </size>
            </property>
@@ -355,6 +355,52 @@
           </widget>
          </item>
          <item>
+          <spacer name="horizontalSpacer_22">
+           <property name="orientation">
+            <enum>Qt::Horizontal</enum>
+           </property>
+           <property name="sizeType">
+            <enum>QSizePolicy::Fixed</enum>
+           </property>
+           <property name="sizeHint" stdset="0">
+            <size>
+             <width>5</width>
+             <height>20</height>
+            </size>
+           </property>
+          </spacer>
+         </item>
+         <item>
+          <widget class="QPushButton" name="pushButton_4">
+           <property name="sizePolicy">
+            <sizepolicy hsizetype="Fixed" vsizetype="Fixed">
+             <horstretch>0</horstretch>
+             <verstretch>0</verstretch>
+            </sizepolicy>
+           </property>
+           <property name="minimumSize">
+            <size>
+             <width>40</width>
+             <height>25</height>
+            </size>
+           </property>
+           <property name="maximumSize">
+            <size>
+             <width>40</width>
+             <height>25</height>
+            </size>
+           </property>
+           <property name="font">
+            <font>
+             <pointsize>11</pointsize>
+            </font>
+           </property>
+           <property name="text">
+            <string>Save</string>
+           </property>
+          </widget>
+         </item>
+         <item>
           <spacer name="horizontalSpacer_2">
            <property name="orientation">
             <enum>Qt::Horizontal</enum>
@@ -364,7 +410,7 @@
            </property>
            <property name="sizeHint" stdset="0">
             <size>
-             <width>40</width>
+             <width>10</width>
              <height>20</height>
             </size>
            </property>
